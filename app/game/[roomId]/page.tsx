@@ -39,26 +39,86 @@ export default function GameScreen() {
   const [hasAccused, setHasAccused] = useState(false);
   const [accusationWinner, setAccusationWinner] = useState<"innocent" | "mafioso" | null>(null);
 
-  // Stabilize supabase client reference to prevent subscription churn
   const supabase = useMemo(() => createClient(), []);
-  const processedVoteKeyRef = useRef<string>("");
+  const processingRef = useRef(false);
 
-  // Derive revote info from votes (syncs across all players)
-  const revoteInfo = useMemo(() => {
-    if (!room) return { isRevote: false, tiedPlayerIds: [] as string[] };
-    const alivePlayers = players.filter((p) => p.is_alive);
-    const firstVotes = votes.filter(
-      (v) => v.round_number === room.current_round && !v.is_revote
+  // Helper: fetch fresh data from DB
+  const fetchVotes = useCallback(async () => {
+    const { data } = await supabase.from("room_votes").select("*").eq("room_id", roomId);
+    if (data) setVotes(data as RoomVote[]);
+    return (data ?? []) as RoomVote[];
+  }, [supabase, roomId]);
+
+  const fetchPlayers = useCallback(async () => {
+    const { data } = await supabase.from("room_players").select("*").eq("room_id", roomId).order("seat_number");
+    if (data) setPlayers(data as RoomPlayer[]);
+    return (data ?? []) as RoomPlayer[];
+  }, [supabase, roomId]);
+
+  const fetchRoom = useCallback(async () => {
+    const { data } = await supabase.from("rooms").select("*").eq("id", roomId).single();
+    if (data) setRoom(data as Room);
+    return data as Room | null;
+  }, [supabase, roomId]);
+
+  // Process votes: called after inserting a vote. Any player can trigger this.
+  const processVotes = useCallback(async (currentRoom: Room) => {
+    if (processingRef.current) return;
+
+    const freshVotes = await fetchVotes();
+    const freshPlayers = await fetchPlayers();
+    const alivePlayers = freshPlayers.filter((p) => p.is_alive);
+
+    const firstVotes = freshVotes.filter(
+      (v) => v.round_number === currentRoom.current_round && !v.is_revote
     );
-    // It's a revote ONLY if: all alive players already voted in first round AND it was a tie
-    const allFirstVoted = alivePlayers.length > 0 && alivePlayers.every((p) =>
+    const revoteVotes = freshVotes.filter(
+      (v) => v.round_number === currentRoom.current_round && v.is_revote
+    );
+
+    // Check if all first votes are in
+    const allFirstVoted = alivePlayers.every((p) =>
       firstVotes.some((v) => v.voter_player_id === p.id)
     );
-    const firstVoteTied = allFirstVoted && !getJailedPlayerId(firstVotes);
-    const isRevote = room.current_state === "round_vote" && firstVoteTied;
-    const tiedPlayerIds = firstVoteTied ? getTiedPlayerIds(firstVotes) : [];
-    return { isRevote, tiedPlayerIds };
-  }, [room, votes, players]);
+
+    if (!allFirstVoted) return; // Not all voted yet
+
+    // Check if first vote had a clear winner
+    const firstJailed = getJailedPlayerId(firstVotes);
+
+    if (firstJailed) {
+      // Clear winner from first vote
+      processingRef.current = true;
+      await supabase.from("room_players").update({ is_alive: false }).eq("id", firstJailed);
+      await advanceGameState(supabase, roomId, "round_reveal");
+      processingRef.current = false;
+      return;
+    }
+
+    // First vote was a tie — check if revote happened
+    const allRevoted = alivePlayers.every((p) =>
+      revoteVotes.some((v) => v.voter_player_id === p.id)
+    );
+
+    if (!allRevoted) {
+      // Tie, but revote not done yet — advance to round_reveal to show tie
+      if (revoteVotes.length === 0) {
+        processingRef.current = true;
+        await advanceGameState(supabase, roomId, "round_reveal");
+        processingRef.current = false;
+      }
+      return;
+    }
+
+    // Revote is complete — force resolve (random on tie)
+    const revoteJailed = getJailedPlayerIdForceResolve(revoteVotes);
+    if (revoteJailed) {
+      processingRef.current = true;
+      await supabase.from("room_players").update({ is_alive: false }).eq("id", revoteJailed);
+      await advanceGameState(supabase, roomId, "round_reveal");
+      processingRef.current = false;
+    }
+  }, [supabase, roomId, fetchVotes, fetchPlayers]);
 
   // Initial data load
   useEffect(() => {
@@ -66,14 +126,10 @@ export default function GameScreen() {
     setCurrentPlayerId(playerId);
 
     async function loadGameData() {
-      const { data: roomData } = await supabase
-        .from("rooms").select("*").eq("id", roomId).single();
+      const roomData = await fetchRoom();
       if (!roomData) return;
-      setRoom(roomData as Room);
 
-      const { data: playersData } = await supabase
-        .from("room_players").select("*").eq("room_id", roomId).order("seat_number");
-      setPlayers((playersData as RoomPlayer[]) ?? []);
+      await fetchPlayers();
 
       if (roomData.case_id) {
         const { data: cd } = await supabase
@@ -85,15 +141,13 @@ export default function GameScreen() {
         setCharacters((chars as CaseCharacter[]) ?? []);
       }
 
-      const { data: votesData } = await supabase
-        .from("room_votes").select("*").eq("room_id", roomId);
-      setVotes((votesData as RoomVote[]) ?? []);
+      await fetchVotes();
     }
 
     loadGameData();
-  }, [roomId, supabase]);
+  }, [roomId, supabase, fetchRoom, fetchPlayers, fetchVotes]);
 
-  // Realtime subscriptions
+  // Realtime: listen for room changes + player changes + vote changes
   useEffect(() => {
     if (!roomId) return;
     const channel = supabase
@@ -101,75 +155,41 @@ export default function GameScreen() {
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "rooms", filter: `id=eq.${roomId}` },
         (payload) => { setRoom(payload.new as Room); setHasVoted(false); })
       .on("postgres_changes", { event: "*", schema: "public", table: "room_players", filter: `room_id=eq.${roomId}` },
-        () => { supabase.from("room_players").select("*").eq("room_id", roomId).order("seat_number")
-          .then(({ data }) => { if (data) setPlayers(data as RoomPlayer[]); }); })
+        () => { fetchPlayers(); })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "room_votes", filter: `room_id=eq.${roomId}` },
-        () => { supabase.from("room_votes").select("*").eq("room_id", roomId)
-          .then(({ data }) => { if (data) setVotes(data as RoomVote[]); }); })
+        () => { fetchVotes(); })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [roomId, supabase]);
+  }, [roomId, supabase, fetchPlayers, fetchVotes]);
 
-  // Poll votes every 3s as fallback for realtime misses
+  // Poll during round_vote to catch missed realtime events
   useEffect(() => {
     if (!room || room.current_state !== "round_vote") return;
-    const interval = setInterval(() => {
-      supabase.from("room_votes").select("*").eq("room_id", roomId)
-        .then(({ data }) => { if (data) setVotes(data as RoomVote[]); });
-    }, 3000);
+    const interval = setInterval(async () => {
+      const freshRoom = await fetchRoom();
+      if (freshRoom && freshRoom.current_state !== "round_vote") return; // Already advanced
+      await fetchVotes();
+      // Try to process if we have all votes
+      if (freshRoom) processVotes(freshRoom);
+    }, 2000);
     return () => clearInterval(interval);
-  }, [room?.current_state, roomId, supabase]);
+  }, [room?.current_state, room?.current_round, fetchRoom, fetchVotes, processVotes]);
 
-  // Vote processing
-  useEffect(() => {
-    if (!room || !currentPlayerId) return;
-    if (room.current_state !== "round_vote") return;
-    if (room.host_player_id !== currentPlayerId) return;
-
+  // Derive revote info for UI rendering
+  const revoteInfo = useMemo(() => {
+    if (!room) return { isRevote: false, tiedPlayerIds: [] as string[] };
     const alivePlayers = players.filter((p) => p.is_alive);
-    if (alivePlayers.length === 0) return;
-
-    // Check if this is a revote: first votes for this round already exist AND tied
-    const firstVotesThisRound = votes.filter(
+    const firstVotes = votes.filter(
       (v) => v.round_number === room.current_round && !v.is_revote
     );
-    const revoteVotesThisRound = votes.filter(
-      (v) => v.round_number === room.current_round && v.is_revote
+    const allFirstVoted = alivePlayers.length > 0 && alivePlayers.every((p) =>
+      firstVotes.some((v) => v.voter_player_id === p.id)
     );
-
-    // It's a revote if: first votes exist, they tied, and we're back in round_vote
-    const firstVoteTied = firstVotesThisRound.length >= alivePlayers.length && !getJailedPlayerId(firstVotesThisRound);
-    const isRevote = firstVoteTied && revoteVotesThisRound.length < alivePlayers.length;
-
-    // Determine which votes to check
-    const currentVotes = isRevote ? revoteVotesThisRound : firstVotesThisRound;
-
-    const allVoted = alivePlayers.every((p) =>
-      currentVotes.some((v) => v.voter_player_id === p.id)
-    );
-    if (!allVoted) return;
-
-    // Prevent double-processing
-    const voteKey = `${room.current_round}-${isRevote}-${currentVotes.map(v => v.id).sort().join(",")}`;
-    if (processedVoteKeyRef.current === voteKey) return;
-    processedVoteKeyRef.current = voteKey;
-
-    // First vote: null on tie. Revote: force resolve (random on tie).
-    const jailedId = isRevote
-      ? getJailedPlayerIdForceResolve(currentVotes)
-      : getJailedPlayerId(currentVotes);
-
-    if (jailedId) {
-      supabase
-        .from("room_players")
-        .update({ is_alive: false })
-        .eq("id", jailedId)
-        .then(() => { advanceGameState(supabase, roomId, "round_reveal"); });
-    } else {
-      // First vote tie → show tie screen (revote will happen)
-      advanceGameState(supabase, roomId, "round_reveal");
-    }
-  }, [votes, room, players, currentPlayerId, roomId, supabase]);
+    const firstVoteTied = allFirstVoted && !getJailedPlayerId(firstVotes);
+    const isRevote = room.current_state === "round_vote" && firstVoteTied;
+    const tiedPlayerIds = firstVoteTied ? getTiedPlayerIds(firstVotes) : [];
+    return { isRevote, tiedPlayerIds };
+  }, [room, votes, players]);
 
   // Host advances game state
   const handleAdvance = useCallback(async (nextState?: GameState) => {
@@ -177,12 +197,7 @@ export default function GameScreen() {
 
     let state = nextState;
     if (!state) {
-      let latestPlayers = players;
-      if (room.current_state === "round_reveal") {
-        const { data: freshPlayers } = await supabase
-          .from("room_players").select("*").eq("room_id", roomId).order("seat_number");
-        if (freshPlayers) { latestPlayers = freshPlayers as RoomPlayer[]; setPlayers(latestPlayers); }
-      }
+      const latestPlayers = await fetchPlayers();
       state = getNextState(room.current_state, room.current_round,
         room.player_count_mode as 4 | 5, allMafiosoCaught(latestPlayers));
     }
@@ -190,18 +205,20 @@ export default function GameScreen() {
     const shouldIncrementRound = state === "round_evidence" && room.current_state === "round_reveal";
     await advanceGameState(supabase, roomId, state,
       shouldIncrementRound ? room.current_round + 1 : undefined);
-  }, [room, currentPlayerId, players, supabase, roomId]);
+  }, [room, currentPlayerId, supabase, roomId, fetchPlayers]);
 
-  // Revote: go back to round_vote (derived state detects it's a revote)
+  // Revote
   const handleRevote = useCallback(async () => {
     if (!room || room.host_player_id !== currentPlayerId) return;
     setHasVoted(false);
     await advanceGameState(supabase, roomId, "round_vote");
   }, [room, currentPlayerId, supabase, roomId]);
 
+  // Vote: insert vote, then immediately try to process
   const handleVote = async (targetPlayerId: string) => {
     if (!room || !currentPlayerId) return;
     setHasVoted(true);
+
     await supabase.from("room_votes").insert({
       room_id: roomId,
       round_number: room.current_round,
@@ -209,6 +226,9 @@ export default function GameScreen() {
       target_player_id: targetPlayerId,
       is_revote: revoteInfo.isRevote,
     });
+
+    // Small delay to let DB settle, then try to process
+    setTimeout(() => { processVotes(room); }, 500);
   };
 
   const handleAccusation = async (targetPlayerId: string) => {
@@ -311,8 +331,6 @@ export default function GameScreen() {
       );
 
       const relevantVotes = revoteVotes.length > 0 ? revoteVotes : firstVotes;
-
-      // For revote results, use force-resolve (random on tie)
       const jailedId = revoteVotes.length > 0
         ? getJailedPlayerIdForceResolve(relevantVotes)
         : getJailedPlayerId(relevantVotes);
