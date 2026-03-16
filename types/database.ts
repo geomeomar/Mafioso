@@ -89,6 +89,5 @@ export type GameState =
   | "round_discussion"
   | "round_vote"
   | "round_reveal"
-  | "final_discussion"
-  | "final_vote"
+  | "final_accusation"
   | "game_result";

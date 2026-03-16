@@ -10,6 +10,8 @@ import {
   getJailedPlayerId,
   allMafiosoCaught,
   determineWinner,
+  checkAccusation,
+  getLastJailedInnocent,
 } from "@/lib/game-engine";
 import { RoleReveal } from "@/components/game/role-reveal";
 import { CaseIntro } from "@/components/game/case-intro";
@@ -17,6 +19,7 @@ import { EvidenceReveal } from "@/components/game/evidence-reveal";
 import { DiscussionTimer } from "@/components/game/discussion-timer";
 import { VotingScreen } from "@/components/game/voting-screen";
 import { JailReveal } from "@/components/game/jail-reveal";
+import { FinalAccusation } from "@/components/game/final-accusation";
 import { GameResult } from "@/components/game/game-result";
 import type { Room, RoomPlayer, Case, CaseCharacter, GameState, RoomVote } from "@/types/database";
 
@@ -30,9 +33,9 @@ export default function GameScreen() {
   const [characters, setCharacters] = useState<CaseCharacter[]>([]);
   const [votes, setVotes] = useState<RoomVote[]>([]);
   const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(null);
-  const [jailedPlayer, setJailedPlayer] = useState<RoomPlayer | null>(null);
-  const [wasTie, setWasTie] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
+  const [hasAccused, setHasAccused] = useState(false);
+  const [accusationWinner, setAccusationWinner] = useState<"innocent" | "mafioso" | null>(null);
 
   const supabase = createClient();
 
@@ -42,7 +45,6 @@ export default function GameScreen() {
     setCurrentPlayerId(playerId);
 
     async function loadGameData() {
-      // Load room
       const { data: roomData } = await supabase
         .from("rooms")
         .select("*")
@@ -51,7 +53,6 @@ export default function GameScreen() {
       if (!roomData) return;
       setRoom(roomData as Room);
 
-      // Load players
       const { data: playersData } = await supabase
         .from("room_players")
         .select("*")
@@ -59,7 +60,6 @@ export default function GameScreen() {
         .order("seat_number");
       setPlayers((playersData as RoomPlayer[]) ?? []);
 
-      // Load case
       if (roomData.case_id) {
         const { data: cd } = await supabase
           .from("cases")
@@ -76,7 +76,6 @@ export default function GameScreen() {
         setCharacters((chars as CaseCharacter[]) ?? []);
       }
 
-      // Load votes for current round
       const { data: votesData } = await supabase
         .from("room_votes")
         .select("*")
@@ -98,7 +97,7 @@ export default function GameScreen() {
         { event: "UPDATE", schema: "public", table: "rooms", filter: `id=eq.${roomId}` },
         (payload) => {
           setRoom(payload.new as Room);
-          setHasVoted(false); // Reset vote status on state change
+          setHasVoted(false);
         }
       )
       .on(
@@ -135,63 +134,40 @@ export default function GameScreen() {
     };
   }, [roomId, supabase]);
 
-  // Check if all votes are in and process results
+  // Vote processing: when all votes are in, advance to round_reveal
   useEffect(() => {
     if (!room || !currentPlayerId) return;
-    if (room.current_state !== "round_vote" && room.current_state !== "final_vote") return;
+    if (room.current_state !== "round_vote") return;
 
     const alivePlayers = players.filter((p) => p.is_alive);
     const roundVotes = votes.filter((v) => v.round_number === room.current_round);
 
-    // Check if all alive players voted
     const allVoted = alivePlayers.every((p) =>
       roundVotes.some((v) => v.voter_player_id === p.id)
     );
-
     if (!allVoted) return;
 
-    // Only host processes vote results
+    // Only host processes
     if (room.host_player_id !== currentPlayerId) return;
 
     const jailedId = getJailedPlayerId(roundVotes);
 
     if (jailedId) {
-      // Jail the player
+      // Jail the player, then go to round_reveal (NOT beyond it)
       supabase
         .from("room_players")
         .update({ is_alive: false })
         .eq("id", jailedId)
         .then(() => {
-          // Check win condition
-          const updatedPlayers = players.map((p) =>
-            p.id === jailedId ? { ...p, is_alive: false } : p
-          );
-          const caught = allMafiosoCaught(updatedPlayers);
-          const nextState = getNextState(
-            room.current_state,
-            room.current_round,
-            room.player_count_mode as 3 | 5,
-            caught
-          );
-          advanceGameState(supabase, roomId, nextState,
-            nextState === "round_evidence" ? room.current_round + 1 : undefined
-          );
+          advanceGameState(supabase, roomId, "round_reveal");
         });
     } else {
-      // Tie — advance without jailing
-      setWasTie(true);
-      const nextState = getNextState(
-        room.current_state,
-        room.current_round,
-        room.player_count_mode as 3 | 5,
-        false
-      );
-      advanceGameState(supabase, roomId, nextState,
-        nextState === "round_evidence" ? room.current_round + 1 : undefined
-      );
+      // Tie — go to round_reveal (JailReveal will show tie message)
+      advanceGameState(supabase, roomId, "round_reveal");
     }
   }, [votes, room, players, currentPlayerId, roomId, supabase]);
 
+  // handleAdvance: host advances from current state to next
   const handleAdvance = useCallback(
     async (nextState?: GameState) => {
       if (!room || room.host_player_id !== currentPlayerId) return;
@@ -226,7 +202,28 @@ export default function GameScreen() {
     });
   };
 
-  // Render based on game state
+  const handleAccusation = async (targetPlayerId: string) => {
+    if (!room || !currentPlayerId) return;
+    setHasAccused(true);
+    const winner = checkAccusation(targetPlayerId, players);
+    setAccusationWinner(winner);
+    // Store result as event, then advance to game_result
+    await supabase.from("room_events").insert({
+      room_id: roomId,
+      event_type: "final_accusation",
+      payload_json: { accuser_id: currentPlayerId, target_id: targetPlayerId, winner },
+    });
+    // Mark accused as jailed if they were mafioso
+    if (winner === "innocent") {
+      await supabase
+        .from("room_players")
+        .update({ is_alive: false })
+        .eq("id", targetPlayerId);
+    }
+    await advanceGameState(supabase, roomId, "game_result");
+  };
+
+  // Render
   const currentPlayer = players.find((p) => p.id === currentPlayerId);
 
   if (!room || !currentPlayerId || !currentPlayer || players.length === 0) {
@@ -242,13 +239,8 @@ export default function GameScreen() {
   );
   const isHost = room.host_player_id === currentPlayerId;
 
-  // Mafioso partners (for 5-player mode)
   const partnerNames = players
-    .filter(
-      (p) =>
-        p.assigned_role === "mafioso" &&
-        p.id !== currentPlayerId
-    )
+    .filter((p) => p.assigned_role === "mafioso" && p.id !== currentPlayerId)
     .map((p) => p.nickname);
 
   switch (room.current_state) {
@@ -258,9 +250,8 @@ export default function GameScreen() {
           player={currentPlayer}
           character={myCharacter ?? null}
           partnerNames={currentPlayer?.assigned_role === "mafioso" ? partnerNames : []}
-          onContinue={() => {
-            if (isHost) handleAdvance("case_intro");
-          }}
+          isHost={isHost}
+          onContinue={() => handleAdvance("case_intro")}
         />
       );
 
@@ -268,9 +259,8 @@ export default function GameScreen() {
       return caseData ? (
         <CaseIntro
           caseData={caseData}
-          onContinue={() => {
-            if (isHost) handleAdvance("round_evidence");
-          }}
+          isHost={isHost}
+          onContinue={() => handleAdvance("round_evidence")}
         />
       ) : null;
 
@@ -279,9 +269,8 @@ export default function GameScreen() {
         <EvidenceReveal
           roundNumber={room.current_round}
           evidenceText={getEvidenceForRound(room.current_round, caseData)}
-          onContinue={() => {
-            if (isHost) handleAdvance("round_discussion");
-          }}
+          isHost={isHost}
+          onContinue={() => handleAdvance("round_discussion")}
         />
       ) : null;
 
@@ -290,25 +279,12 @@ export default function GameScreen() {
         <DiscussionTimer
           roundNumber={room.current_round}
           isFinal={false}
-          onTimeUp={() => {
-            if (isHost) handleAdvance("round_vote");
-          }}
+          isHost={isHost}
+          onTimeUp={() => handleAdvance("round_vote")}
         />
       );
 
-    case "final_discussion":
-      return (
-        <DiscussionTimer
-          roundNumber={room.current_round}
-          isFinal={true}
-          onTimeUp={() => {
-            if (isHost) handleAdvance("final_vote");
-          }}
-        />
-      );
-
-    case "round_vote":
-    case "final_vote": {
+    case "round_vote": {
       const alivePlayers = players.filter((p) => p.is_alive);
       const roundVotes = votes.filter((v) => v.round_number === room.current_round);
       const playersWhoVoted = new Set(roundVotes.map((v) => v.voter_player_id));
@@ -336,9 +312,32 @@ export default function GameScreen() {
         <JailReveal
           jailedPlayer={jailed}
           wasTie={!jailed}
-          onContinue={() => {
-            if (isHost) handleAdvance();
-          }}
+          isHost={isHost}
+          onContinue={() => handleAdvance()}
+        />
+      );
+    }
+
+    case "final_accusation": {
+      const lastJailed = getLastJailedInnocent(players);
+      const alivePlayers = players.filter((p) => p.is_alive);
+
+      if (!lastJailed) {
+        // Edge case: no jailed innocent (shouldn't happen normally)
+        return (
+          <div className="flex items-center justify-center min-h-screen">
+            <p className="text-muted-foreground">جاري التحميل...</p>
+          </div>
+        );
+      }
+
+      return (
+        <FinalAccusation
+          accuserPlayer={lastJailed}
+          alivePlayers={alivePlayers}
+          currentPlayerId={currentPlayerId}
+          onAccuse={handleAccusation}
+          hasAccused={hasAccused}
         />
       );
     }
@@ -346,7 +345,7 @@ export default function GameScreen() {
     case "game_result":
       return caseData ? (
         <GameResult
-          winner={determineWinner(players)}
+          winner={accusationWinner ?? determineWinner(players)}
           players={players}
           caseData={caseData}
           currentPlayerId={currentPlayerId}

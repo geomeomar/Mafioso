@@ -4,10 +4,11 @@ import type { Case } from "@/types/database";
 
 interface CaseIntroProps {
   caseData: Case;
+  isHost: boolean;
   onContinue: () => void;
 }
 
-export function CaseIntro({ caseData, onContinue }: CaseIntroProps) {
+export function CaseIntro({ caseData, isHost, onContinue }: CaseIntroProps) {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen px-4">
       <div className="max-w-md w-full">
@@ -27,10 +28,14 @@ export function CaseIntro({ caseData, onContinue }: CaseIntroProps) {
 
         <button
           onClick={onContinue}
-          className="w-full bg-accent hover:bg-accent/90 text-accent-foreground py-4 rounded-xl text-lg font-semibold transition-colors"
+          disabled={!isHost}
+          className={`w-full text-accent-foreground py-4 rounded-xl text-lg font-semibold transition-colors ${isHost ? "bg-accent hover:bg-accent/90" : "bg-accent/50 opacity-50 cursor-not-allowed"}`}
         >
           يلا نبدأ التحقيق
         </button>
+        {!isHost && (
+          <p className="text-xs text-muted-foreground mt-2 text-center">مستني المضيف يكمّل...</p>
+        )}
       </div>
     </div>
   );

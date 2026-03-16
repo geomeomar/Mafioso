@@ -8,10 +8,11 @@ interface RoleRevealProps {
   player: RoomPlayer;
   character: CaseCharacter | null;
   partnerNames: string[];
+  isHost: boolean;
   onContinue: () => void;
 }
 
-export function RoleReveal({ player, character, partnerNames, onContinue }: RoleRevealProps) {
+export function RoleReveal({ player, character, partnerNames, isHost, onContinue }: RoleRevealProps) {
   const [revealed, setRevealed] = useState(false);
   const avatar = AVATAR_OPTIONS.find((a) => a.id === player.avatar);
   const isMafioso = player.assigned_role === "mafioso";
@@ -67,10 +68,14 @@ export function RoleReveal({ player, character, partnerNames, onContinue }: Role
 
           <button
             onClick={onContinue}
-            className="mt-6 bg-card hover:bg-card/80 border border-border text-foreground py-3 px-8 rounded-xl font-semibold transition-colors"
+            disabled={!isHost}
+            className={`mt-6 bg-card border border-border text-foreground py-3 px-8 rounded-xl font-semibold transition-colors ${isHost ? "hover:bg-card/80" : "opacity-50 cursor-not-allowed"}`}
           >
             فهمت، كمّل
           </button>
+          {!isHost && (
+            <p className="text-xs text-muted-foreground mt-2">مستني المضيف يكمّل...</p>
+          )}
         </div>
       )}
     </div>

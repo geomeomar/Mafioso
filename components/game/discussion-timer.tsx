@@ -6,10 +6,11 @@ import { DISCUSSION_TIMER_SECONDS } from "@/types/game";
 interface DiscussionTimerProps {
   roundNumber: number;
   isFinal: boolean;
+  isHost: boolean;
   onTimeUp: () => void;
 }
 
-export function DiscussionTimer({ roundNumber, isFinal, onTimeUp }: DiscussionTimerProps) {
+export function DiscussionTimer({ roundNumber, isFinal, isHost, onTimeUp }: DiscussionTimerProps) {
   const [secondsLeft, setSecondsLeft] = useState(DISCUSSION_TIMER_SECONDS);
 
   useEffect(() => {
@@ -81,10 +82,14 @@ export function DiscussionTimer({ roundNumber, isFinal, onTimeUp }: DiscussionTi
 
         <button
           onClick={onTimeUp}
-          className="bg-accent hover:bg-accent/90 text-accent-foreground py-3 px-8 rounded-xl font-semibold transition-colors"
+          disabled={!isHost}
+          className={`text-accent-foreground py-3 px-8 rounded-xl font-semibold transition-colors ${isHost ? "bg-accent hover:bg-accent/90" : "bg-accent/50 opacity-50 cursor-not-allowed"}`}
         >
           خلصنا نقاش — صوّت دلوقتي
         </button>
+        {!isHost && (
+          <p className="text-xs text-muted-foreground mt-2">مستني المضيف يكمّل...</p>
+        )}
       </div>
     </div>
   );

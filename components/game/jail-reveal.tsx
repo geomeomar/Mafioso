@@ -6,10 +6,11 @@ import type { RoomPlayer } from "@/types/database";
 interface JailRevealProps {
   jailedPlayer: RoomPlayer | null;
   wasTie: boolean;
+  isHost: boolean;
   onContinue: () => void;
 }
 
-export function JailReveal({ jailedPlayer, wasTie, onContinue }: JailRevealProps) {
+export function JailReveal({ jailedPlayer, wasTie, isHost, onContinue }: JailRevealProps) {
   if (wasTie) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen px-4">
@@ -21,10 +22,14 @@ export function JailReveal({ jailedPlayer, wasTie, onContinue }: JailRevealProps
           </p>
           <button
             onClick={onContinue}
-            className="bg-card hover:bg-card/80 border border-border text-foreground py-3 px-8 rounded-xl font-semibold transition-colors"
+            disabled={!isHost}
+            className={`border border-border text-foreground py-3 px-8 rounded-xl font-semibold transition-colors ${isHost ? "bg-card hover:bg-card/80" : "bg-card/50 opacity-50 cursor-not-allowed"}`}
           >
             كمّل اللعبة
           </button>
+          {!isHost && (
+            <p className="text-xs text-muted-foreground mt-2">مستني المضيف يكمّل...</p>
+          )}
         </div>
       </div>
     );
@@ -54,10 +59,14 @@ export function JailReveal({ jailedPlayer, wasTie, onContinue }: JailRevealProps
 
         <button
           onClick={onContinue}
-          className="block w-full bg-card hover:bg-card/80 border border-border text-foreground py-3 rounded-xl font-semibold transition-colors"
+          disabled={!isHost}
+          className={`block w-full border border-border text-foreground py-3 rounded-xl font-semibold transition-colors ${isHost ? "bg-card hover:bg-card/80" : "bg-card/50 opacity-50 cursor-not-allowed"}`}
         >
           كمّل
         </button>
+        {!isHost && (
+          <p className="text-xs text-muted-foreground mt-2 text-center">مستني المضيف يكمّل...</p>
+        )}
       </div>
     </div>
   );

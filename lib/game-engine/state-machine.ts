@@ -1,9 +1,16 @@
 import type { GameState } from "@/types/database";
 
 /**
- * Defines valid state transitions for the game.
- * 3-player mode: 2 evidence rounds (round 3 may be skipped)
- * 5-player mode: 3 evidence rounds + final discussion
+ * Game flow:
+ * waiting → ready_check → assigning_roles → case_intro → round_evidence
+ * → round_discussion → round_vote → round_reveal
+ *   → if mafioso caught & allMafiosoCaught → game_result
+ *   → if more rounds left → round_evidence (next round)
+ *   → if last round & mafioso survived → final_accusation
+ * final_accusation → game_result
+ *
+ * 3-player: 2 evidence rounds, 1 mafioso
+ * 5-player: 3 evidence rounds, 2 mafioso
  */
 
 const STATE_TRANSITIONS: Record<GameState, GameState[]> = {
@@ -14,9 +21,8 @@ const STATE_TRANSITIONS: Record<GameState, GameState[]> = {
   round_evidence: ["round_discussion"],
   round_discussion: ["round_vote"],
   round_vote: ["round_reveal"],
-  round_reveal: ["round_evidence", "final_discussion", "game_result"],
-  final_discussion: ["final_vote"],
-  final_vote: ["game_result"],
+  round_reveal: ["round_evidence", "final_accusation", "game_result"],
+  final_accusation: ["game_result"],
   game_result: [],
 };
 
@@ -30,11 +36,6 @@ export function getNextState(
   playerCount: 3 | 5,
   allMafiosoCaught: boolean
 ): GameState {
-  // If all mafioso caught, game is over
-  if (allMafiosoCaught && currentState === "round_reveal") {
-    return "game_result";
-  }
-
   const maxRounds = playerCount === 3 ? 2 : 3;
 
   switch (currentState) {
@@ -51,18 +52,20 @@ export function getNextState(
     case "round_discussion":
       return "round_vote";
     case "round_vote":
+      // Always go to round_reveal so players see the jail result
       return "round_reveal";
     case "round_reveal":
+      // If all mafioso are caught → innocents win immediately
+      if (allMafiosoCaught) {
+        return "game_result";
+      }
+      // If more rounds left → continue with next evidence
       if (currentRound < maxRounds) {
         return "round_evidence";
       }
-      if (playerCount === 5) {
-        return "final_discussion";
-      }
-      return "game_result";
-    case "final_discussion":
-      return "final_vote";
-    case "final_vote":
+      // Last round done, mafioso survived → final accusation
+      return "final_accusation";
+    case "final_accusation":
       return "game_result";
     default:
       return "game_result";

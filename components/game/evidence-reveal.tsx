@@ -3,10 +3,11 @@
 interface EvidenceRevealProps {
   roundNumber: number;
   evidenceText: string;
+  isHost: boolean;
   onContinue: () => void;
 }
 
-export function EvidenceReveal({ roundNumber, evidenceText, onContinue }: EvidenceRevealProps) {
+export function EvidenceReveal({ roundNumber, evidenceText, isHost, onContinue }: EvidenceRevealProps) {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen px-4">
       <div className="max-w-md w-full">
@@ -27,10 +28,14 @@ export function EvidenceReveal({ roundNumber, evidenceText, onContinue }: Eviden
 
         <button
           onClick={onContinue}
-          className="w-full bg-card hover:bg-card/80 border border-border text-foreground py-4 rounded-xl text-lg font-semibold transition-colors"
+          disabled={!isHost}
+          className={`w-full border border-border text-foreground py-4 rounded-xl text-lg font-semibold transition-colors ${isHost ? "bg-card hover:bg-card/80" : "bg-card/50 opacity-50 cursor-not-allowed"}`}
         >
           ابدأ النقاش
         </button>
+        {!isHost && (
+          <p className="text-xs text-muted-foreground mt-2 text-center">مستني المضيف يكمّل...</p>
+        )}
       </div>
     </div>
   );
