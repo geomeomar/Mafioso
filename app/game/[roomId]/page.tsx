@@ -197,11 +197,16 @@ export default function GameScreen() {
         );
       }
 
+      // Only increment round when looping back from round_reveal → round_evidence
+      // (NOT when going from case_intro → round_evidence, since startGame already sets round to 1)
+      const shouldIncrementRound =
+        state === "round_evidence" && room.current_state === "round_reveal";
+
       await advanceGameState(
         supabase,
         roomId,
         state,
-        state === "round_evidence" ? room.current_round + 1 : undefined
+        shouldIncrementRound ? room.current_round + 1 : undefined
       );
     },
     [room, currentPlayerId, players, supabase, roomId]
@@ -287,6 +292,10 @@ export default function GameScreen() {
           evidenceText={getEvidenceForRound(room.current_round, caseData)}
           isHost={isHost}
           onContinue={() => handleAdvance("round_discussion")}
+          playerNickname={currentPlayer.nickname}
+          characterName={myCharacter?.character_name ?? null}
+          characterProfile={myCharacter?.public_profile ?? null}
+          playerRole={currentPlayer.assigned_role}
         />
       ) : null;
 
