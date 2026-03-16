@@ -9,24 +9,30 @@ interface JailRevealProps {
   isHost: boolean;
   onContinue: () => void;
   extraMessage?: string;
+  continueLabel?: string;
 }
 
-export function JailReveal({ jailedPlayer, wasTie, isHost, onContinue, extraMessage }: JailRevealProps) {
+export function JailReveal({ jailedPlayer, wasTie, isHost, onContinue, extraMessage, continueLabel }: JailRevealProps) {
   if (wasTie) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen px-4">
         <div className="text-center max-w-sm">
           <div className="text-6xl mb-6">⚖️</div>
           <h2 className="text-2xl font-bold mb-2">تعادل!</h2>
-          <p className="text-muted-foreground mb-8">
+          <p className="text-muted-foreground mb-4">
             محدش اتحبس الجولة دي... التصويت كان متعادل
           </p>
+          {extraMessage && (
+            <p className="text-warning text-sm font-semibold mb-6 bg-warning/10 px-4 py-2 rounded-lg">
+              {extraMessage}
+            </p>
+          )}
           <button
             onClick={onContinue}
             disabled={!isHost}
             className={`border border-border text-foreground py-3 px-8 rounded-xl font-semibold transition-colors ${isHost ? "bg-card hover:bg-card/80" : "bg-card/50 opacity-50 cursor-not-allowed"}`}
           >
-            كمّل اللعبة
+            {continueLabel ?? "كمّل اللعبة"}
           </button>
           {!isHost && (
             <p className="text-xs text-muted-foreground mt-2">مستني المضيف يكمّل...</p>

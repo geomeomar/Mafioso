@@ -36,6 +36,19 @@ export function getJailedPlayerId(votes: RoomVote[]): string | null {
 }
 
 /**
+ * Returns the IDs of players who are tied at the top of the vote.
+ */
+export function getTiedPlayerIds(votes: RoomVote[]): string[] {
+  const results = tallyVotes(votes);
+  if (results.length < 2) return [];
+
+  const topVotes = results[0].vote_count;
+  return results
+    .filter((r) => r.vote_count === topVotes)
+    .map((r) => r.target_player_id);
+}
+
+/**
  * Checks if all alive players have voted for a given round.
  */
 export function allPlayersVoted(
