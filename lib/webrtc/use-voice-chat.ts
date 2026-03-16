@@ -71,7 +71,7 @@ export function useVoiceChat(roomId: string, playerId: string | null, enabled: b
         if (!audio) {
           audio = document.createElement("audio");
           audio.autoplay = true;
-          audio.playsInline = true;
+          audio.setAttribute("playsinline", "true");
           document.body.appendChild(audio);
           audioElementsRef.current.set(remotePeerId, audio);
         }
