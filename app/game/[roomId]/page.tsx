@@ -44,20 +44,20 @@ export default function GameScreen() {
 
   // Derive revote info from votes (syncs across all players)
   const revoteInfo = useMemo(() => {
-    if (!room) return { isRevote: false, tiedPlayerIds: [] as string[], hasRevoteVotes: false };
+    if (!room) return { isRevote: false, tiedPlayerIds: [] as string[] };
+    const alivePlayers = players.filter((p) => p.is_alive);
     const firstVotes = votes.filter(
       (v) => v.round_number === room.current_round && !v.is_revote
     );
-    const revoteVotes = votes.filter(
-      (v) => v.round_number === room.current_round && v.is_revote
+    // It's a revote ONLY if: all alive players already voted in first round AND it was a tie
+    const allFirstVoted = alivePlayers.length > 0 && alivePlayers.every((p) =>
+      firstVotes.some((v) => v.voter_player_id === p.id)
     );
-    const isRevote = room.current_state === "round_vote" && firstVotes.length > 0;
-    const tiedPlayerIds = firstVotes.length > 0 && !getJailedPlayerId(firstVotes)
-      ? getTiedPlayerIds(firstVotes)
-      : [];
-    const hasRevoteVotes = revoteVotes.length > 0;
-    return { isRevote, tiedPlayerIds, hasRevoteVotes };
-  }, [room, votes]);
+    const firstVoteTied = allFirstVoted && !getJailedPlayerId(firstVotes);
+    const isRevote = room.current_state === "round_vote" && firstVoteTied;
+    const tiedPlayerIds = firstVoteTied ? getTiedPlayerIds(firstVotes) : [];
+    return { isRevote, tiedPlayerIds };
+  }, [room, votes, players]);
 
   // Initial data load
   useEffect(() => {
