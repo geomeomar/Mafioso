@@ -2,16 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { DISCUSSION_TIMER_SECONDS } from "@/types/game";
+import { useVoiceChat } from "@/lib/webrtc/use-voice-chat";
 
 interface DiscussionTimerProps {
   roundNumber: number;
   isFinal: boolean;
   isHost: boolean;
   onTimeUp: () => void;
+  roomId: string;
+  currentPlayerId: string | null;
 }
 
-export function DiscussionTimer({ roundNumber, isFinal, isHost, onTimeUp }: DiscussionTimerProps) {
+export function DiscussionTimer({ roundNumber, isFinal, isHost, onTimeUp, roomId, currentPlayerId }: DiscussionTimerProps) {
   const [secondsLeft, setSecondsLeft] = useState(DISCUSSION_TIMER_SECONDS);
+  const { isMicOn, toggleMic, connectedPeers, error } = useVoiceChat(roomId, currentPlayerId, true);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -40,10 +44,10 @@ export function DiscussionTimer({ roundNumber, isFinal, isHost, onTimeUp }: Disc
           {isFinal ? "النقاش النهائي" : `نقاش الجولة ${roundNumber}`}
         </span>
 
-        <h2 className="text-xl font-bold mb-8">مين فيكم شاكك فيه؟</h2>
+        <h2 className="text-xl font-bold mb-6">مين فيكم شاكك فيه؟</h2>
 
         {/* Timer circle */}
-        <div className="relative w-48 h-48 mx-auto mb-8">
+        <div className="relative w-48 h-48 mx-auto mb-6">
           <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
             <circle
               cx="50" cy="50" r="45"
@@ -76,7 +80,41 @@ export function DiscussionTimer({ roundNumber, isFinal, isHost, onTimeUp }: Disc
           </div>
         </div>
 
-        <p className="text-muted-foreground text-sm mb-6">
+        {/* Voice chat controls */}
+        <div className="mb-6">
+          <button
+            onClick={toggleMic}
+            className={`inline-flex items-center gap-2 px-6 py-3 rounded-full text-lg font-semibold transition-all ${
+              isMicOn
+                ? "bg-danger/20 text-danger border-2 border-danger/40 animate-pulse"
+                : "bg-card border-2 border-border text-foreground hover:bg-card/80"
+            }`}
+          >
+            <span className="text-2xl">{isMicOn ? "🎙️" : "🔇"}</span>
+            {isMicOn ? "المايك شغال" : "فتح المايك"}
+          </button>
+
+          {isMicOn && connectedPeers > 0 && (
+            <p className="text-xs text-success mt-2">
+              متوصل مع {connectedPeers} لاعب 🟢
+            </p>
+          )}
+          {isMicOn && connectedPeers === 0 && (
+            <p className="text-xs text-muted-foreground mt-2">
+              مستني لاعبين تانيين يفتحوا المايك...
+            </p>
+          )}
+          {error && (
+            <p className="text-xs text-danger mt-2">{error}</p>
+          )}
+          {!isMicOn && (
+            <p className="text-xs text-muted-foreground mt-2">
+              افتح المايك عشان تتكلم مع اللاعبين
+            </p>
+          )}
+        </div>
+
+        <p className="text-muted-foreground text-sm mb-4">
           اتكلموا مع بعض واتناقشوا... مين المافيوزو؟
         </p>
 

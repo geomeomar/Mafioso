@@ -340,6 +340,8 @@ export default function GameScreen() {
           isFinal={false}
           isHost={isHost}
           onTimeUp={() => handleAdvance("round_vote")}
+          roomId={roomId}
+          currentPlayerId={currentPlayerId}
         />
       );
 

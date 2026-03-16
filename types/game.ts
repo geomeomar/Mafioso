@@ -55,5 +55,5 @@ export const AVATAR_OPTIONS = [
 
 export type AvatarId = (typeof AVATAR_OPTIONS)[number]["id"];
 
-export const DISCUSSION_TIMER_SECONDS = 90;
+export const DISCUSSION_TIMER_SECONDS = 180;
 export const VOTE_TIMER_SECONDS = 30;
