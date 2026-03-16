@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { advanceGameState } from "@/lib/supabase/rooms";
@@ -155,6 +155,9 @@ export default function GameScreen() {
     };
   }, [roomId, supabase]);
 
+  // Track which vote sets we already processed (prevent double-processing)
+  const processedVoteKeyRef = useRef<string>("");
+
   // Vote processing: when all votes are in, check for tie or jail
   useEffect(() => {
     if (!room || !currentPlayerId) return;
@@ -173,8 +176,14 @@ export default function GameScreen() {
     );
     if (!allVoted) return;
 
+    // Prevent processing the same vote set twice
+    const voteKey = `${room.current_round}-${isRevote}-${roundVotes.length}`;
+    if (processedVoteKeyRef.current === voteKey) return;
+
     // Only host processes
     if (room.host_player_id !== currentPlayerId) return;
+
+    processedVoteKeyRef.current = voteKey;
 
     const jailedId = getJailedPlayerId(roundVotes);
 
