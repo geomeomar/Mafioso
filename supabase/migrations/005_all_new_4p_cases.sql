@@ -1,3 +1,11 @@
+-- Clear room data first (FK constraints)
+DELETE FROM room_events;
+DELETE FROM room_votes;
+DELETE FROM game_results;
+UPDATE rooms SET host_player_id = NULL;
+DELETE FROM room_players;
+DELETE FROM rooms;
+
 -- MURDER CASES (M-04, M-06, M-09) → 4-player
 
 DELETE FROM case_characters WHERE case_id IN (SELECT id FROM cases WHERE case_code IN ('M-04','M-06','M-09') AND player_count = 3);
