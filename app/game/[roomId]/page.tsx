@@ -41,6 +41,7 @@ export default function GameScreen() {
 
   const supabase = useMemo(() => createClient(), []);
   const processingRef = useRef(false);
+  const tieShownForRoundRef = useRef<number>(-1);
 
   // Helper: fetch fresh data from DB
   const fetchVotes = useCallback(async () => {
@@ -101,12 +102,15 @@ export default function GameScreen() {
     );
 
     if (!allRevoted) {
-      // Tie, but revote not done yet — advance to round_reveal to show tie
-      if (revoteVotes.length === 0) {
+      // First vote tied, revote not complete yet.
+      // Only show tie screen ONCE per round (use ref to track).
+      if (revoteVotes.length === 0 && tieShownForRoundRef.current !== currentRoom.current_round) {
+        tieShownForRoundRef.current = currentRoom.current_round;
         processingRef.current = true;
         await advanceGameState(supabase, roomId, "round_reveal");
         processingRef.current = false;
       }
+      // Otherwise: waiting for revote votes — do nothing.
       return;
     }
 
