@@ -11,8 +11,8 @@ export const metadata: Metadata = {
   title: "مافيوزو - لعبة الجريمة",
   description: "لعبة اجتماعية للتحقيق والاتهام - اكتشف مين المافيوزو",
   icons: {
-    icon: "/logo.png",
-    apple: "/logo.png",
+    icon: "/Mafia.png",
+    apple: "/Mafia.png",
   },
 };
 
