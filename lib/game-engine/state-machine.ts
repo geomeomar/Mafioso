@@ -9,34 +9,19 @@ import type { GameState } from "@/types/database";
  *   → if last round & mafioso survived → final_accusation
  * final_accusation → game_result
  *
- * 3-player: 2 evidence rounds, 1 mafioso
- * 5-player: 3 evidence rounds, 2 mafioso
+ * 4-player: 2 evidence rounds, 1 mafioso, 3 innocent
+ * 5-player: 3 evidence rounds, 2 mafioso, 3 innocent
+ *
+ * Ties: randomly resolved (no revote). Always someone gets jailed.
  */
-
-const STATE_TRANSITIONS: Record<GameState, GameState[]> = {
-  waiting: ["ready_check"],
-  ready_check: ["assigning_roles"],
-  assigning_roles: ["case_intro"],
-  case_intro: ["round_evidence"],
-  round_evidence: ["round_discussion"],
-  round_discussion: ["round_vote"],
-  round_vote: ["round_reveal"],
-  round_reveal: ["round_evidence", "final_accusation", "game_result"],
-  final_accusation: ["game_result"],
-  game_result: [],
-};
-
-export function canTransition(from: GameState, to: GameState): boolean {
-  return STATE_TRANSITIONS[from]?.includes(to) ?? false;
-}
 
 export function getNextState(
   currentState: GameState,
   currentRound: number,
-  playerCount: 3 | 5,
+  playerCount: 4 | 5,
   allMafiosoCaught: boolean
 ): GameState {
-  const maxRounds = playerCount === 3 ? 2 : 3;
+  const maxRounds = playerCount === 4 ? 2 : 3;
 
   switch (currentState) {
     case "waiting":
@@ -52,7 +37,6 @@ export function getNextState(
     case "round_discussion":
       return "round_vote";
     case "round_vote":
-      // Always go to round_reveal so players see the jail result
       return "round_reveal";
     case "round_reveal":
       // If all mafioso are caught → innocents win immediately

@@ -31,7 +31,7 @@ export interface Room {
   host_player_id: string;
   status: RoomStatus;
   case_id: string | null;
-  player_count_mode: 3 | 5;
+  player_count_mode: 4 | 5;
   current_round: number;
   current_state: GameState;
   created_at: string;

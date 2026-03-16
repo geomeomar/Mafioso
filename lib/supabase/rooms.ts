@@ -19,7 +19,7 @@ function generateRoomCode(): string {
  */
 export async function createRoom(
   supabase: SupabaseClient,
-  playerCountMode: 3 | 5
+  playerCountMode: 4 | 5
 ): Promise<{ room: Room; roomCode: string } | { error: string }> {
   // Pick a random case matching player count
   const { data: cases, error: caseError } = await supabase

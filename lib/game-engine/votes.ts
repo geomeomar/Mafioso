@@ -21,7 +21,7 @@ export function tallyVotes(votes: RoomVote[]): VoteResult[] {
 
 /**
  * Determines who gets jailed this round.
- * Returns null if there's a tie (needs re-vote or skip).
+ * On tie: randomly picks one of the tied players (no revote).
  */
 export function getJailedPlayerId(votes: RoomVote[]): string | null {
   const results = tallyVotes(votes);
@@ -29,7 +29,10 @@ export function getJailedPlayerId(votes: RoomVote[]): string | null {
 
   // Check for tie at the top
   if (results.length > 1 && results[0].vote_count === results[1].vote_count) {
-    return null; // Tie — needs re-vote
+    // Random pick among tied players
+    const topVotes = results[0].vote_count;
+    const tied = results.filter((r) => r.vote_count === topVotes);
+    return tied[Math.floor(Math.random() * tied.length)].target_player_id;
   }
 
   return results[0].target_player_id;
@@ -43,6 +46,7 @@ export function getTiedPlayerIds(votes: RoomVote[]): string[] {
   if (results.length < 2) return [];
 
   const topVotes = results[0].vote_count;
+  if (results[1].vote_count !== topVotes) return []; // no tie
   return results
     .filter((r) => r.vote_count === topVotes)
     .map((r) => r.target_player_id);
@@ -54,11 +58,10 @@ export function getTiedPlayerIds(votes: RoomVote[]): string[] {
 export function allPlayersVoted(
   votes: RoomVote[],
   alivePlayers: { id: string }[],
-  roundNumber: number,
-  isRevote: boolean
+  roundNumber: number
 ): boolean {
   const roundVotes = votes.filter(
-    (v) => v.round_number === roundNumber && v.is_revote === isRevote
+    (v) => v.round_number === roundNumber && !v.is_revote
   );
   const voterIds = new Set(roundVotes.map((v) => v.voter_player_id));
   return alivePlayers.every((p) => voterIds.has(p.id));

@@ -10,7 +10,7 @@ import type { AvatarId } from "@/types/game";
 export default function CreateRoom() {
   const router = useRouter();
   const [nickname, setNickname] = useState("");
-  const [playerCount, setPlayerCount] = useState<3 | 5>(3);
+  const [playerCount, setPlayerCount] = useState<4 | 5>(4);
   const [avatar, setAvatar] = useState<AvatarId>("detective");
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState("");
@@ -70,14 +70,14 @@ export default function CreateRoom() {
           <label className="block text-muted-foreground mb-2 text-sm">عدد اللاعبين</label>
           <div className="flex gap-3">
             <button
-              onClick={() => setPlayerCount(3)}
+              onClick={() => setPlayerCount(4)}
               className={`flex-1 py-3 rounded-xl font-semibold transition-colors ${
-                playerCount === 3
+                playerCount === 4
                   ? "bg-accent text-accent-foreground"
                   : "bg-card border border-border text-muted-foreground"
               }`}
             >
-              ٣ لاعبين
+              ٤ لاعبين
             </button>
             <button
               onClick={() => setPlayerCount(5)}
