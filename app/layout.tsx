@@ -10,6 +10,10 @@ const cairo = Cairo({
 export const metadata: Metadata = {
   title: "مافيوزو - لعبة الجريمة",
   description: "لعبة اجتماعية للتحقيق والاتهام - اكتشف مين المافيوزو",
+  icons: {
+    icon: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({
