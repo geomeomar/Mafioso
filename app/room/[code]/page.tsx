@@ -21,10 +21,19 @@ export default function RoomLobby() {
 
   const supabase = createClient();
 
-  // Load room and players
+  // Check if user has joined — if not, redirect to join page
   useEffect(() => {
     const playerId = sessionStorage.getItem("playerId");
+    if (!playerId) {
+      router.replace(`/room/${roomCode}/join`);
+      return;
+    }
     setCurrentPlayerId(playerId);
+  }, [roomCode, router]);
+
+  // Load room and players
+  useEffect(() => {
+    if (!currentPlayerId) return;
 
     async function loadRoom() {
       const { data: roomData } = await supabase
@@ -49,7 +58,7 @@ export default function RoomLobby() {
     }
 
     loadRoom();
-  }, [roomCode, supabase]);
+  }, [roomCode, currentPlayerId, supabase]);
 
   // Realtime subscription
   useEffect(() => {

@@ -227,7 +227,9 @@ export default function GameScreen() {
   };
 
   // Render based on game state
-  if (!room || !currentPlayerId) {
+  const currentPlayer = players.find((p) => p.id === currentPlayerId);
+
+  if (!room || !currentPlayerId || !currentPlayer || players.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p className="text-muted-foreground">جاري التحميل...</p>
@@ -235,9 +237,8 @@ export default function GameScreen() {
     );
   }
 
-  const currentPlayer = players.find((p) => p.id === currentPlayerId);
   const myCharacter = characters.find(
-    (c) => c.id === currentPlayer?.assigned_character_id
+    (c) => c.id === currentPlayer.assigned_character_id
   );
   const isHost = room.host_player_id === currentPlayerId;
 
@@ -254,7 +255,7 @@ export default function GameScreen() {
     case "assigning_roles":
       return (
         <RoleReveal
-          player={currentPlayer!}
+          player={currentPlayer}
           character={myCharacter ?? null}
           partnerNames={currentPlayer?.assigned_role === "mafioso" ? partnerNames : []}
           onContinue={() => {
