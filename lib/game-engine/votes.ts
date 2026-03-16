@@ -21,7 +21,7 @@ export function tallyVotes(votes: RoomVote[]): VoteResult[] {
 
 /**
  * Determines who gets jailed this round.
- * On tie: randomly picks one of the tied players (no revote).
+ * Returns null if there's a tie at the top.
  */
 export function getJailedPlayerId(votes: RoomVote[]): string | null {
   const results = tallyVotes(votes);
@@ -29,7 +29,21 @@ export function getJailedPlayerId(votes: RoomVote[]): string | null {
 
   // Check for tie at the top
   if (results.length > 1 && results[0].vote_count === results[1].vote_count) {
-    // Random pick among tied players
+    return null; // Tie → needs revote
+  }
+
+  return results[0].target_player_id;
+}
+
+/**
+ * Like getJailedPlayerId but on tie, randomly picks one. Used after revote.
+ */
+export function getJailedPlayerIdForceResolve(votes: RoomVote[]): string | null {
+  const results = tallyVotes(votes);
+  if (results.length === 0) return null;
+
+  // If tie, random pick
+  if (results.length > 1 && results[0].vote_count === results[1].vote_count) {
     const topVotes = results[0].vote_count;
     const tied = results.filter((r) => r.vote_count === topVotes);
     return tied[Math.floor(Math.random() * tied.length)].target_player_id;
@@ -46,23 +60,8 @@ export function getTiedPlayerIds(votes: RoomVote[]): string[] {
   if (results.length < 2) return [];
 
   const topVotes = results[0].vote_count;
-  if (results[1].vote_count !== topVotes) return []; // no tie
+  if (results[1].vote_count !== topVotes) return [];
   return results
     .filter((r) => r.vote_count === topVotes)
     .map((r) => r.target_player_id);
-}
-
-/**
- * Checks if all alive players have voted for a given round.
- */
-export function allPlayersVoted(
-  votes: RoomVote[],
-  alivePlayers: { id: string }[],
-  roundNumber: number
-): boolean {
-  const roundVotes = votes.filter(
-    (v) => v.round_number === roundNumber && !v.is_revote
-  );
-  const voterIds = new Set(roundVotes.map((v) => v.voter_player_id));
-  return alivePlayers.every((p) => voterIds.has(p.id));
 }
