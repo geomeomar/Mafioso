@@ -294,6 +294,8 @@ export default function GameScreen() {
           player={currentPlayer}
           character={myCharacter ?? null}
           partnerNames={currentPlayer?.assigned_role === "mafioso" ? partnerNames : []}
+          allPlayers={players}
+          allCharacters={characters}
           isHost={isHost}
           onContinue={() => handleAdvance("case_intro")}
         />

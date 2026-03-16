@@ -6,6 +6,8 @@
 DELETE FROM room_events;
 DELETE FROM room_votes;
 DELETE FROM game_results;
+-- Clear host_player_id reference before deleting players
+UPDATE rooms SET host_player_id = NULL;
 DELETE FROM room_players;
 DELETE FROM rooms;
 DELETE FROM case_characters;
