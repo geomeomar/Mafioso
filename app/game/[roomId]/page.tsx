@@ -172,14 +172,30 @@ export default function GameScreen() {
     async (nextState?: GameState) => {
       if (!room || room.host_player_id !== currentPlayerId) return;
 
-      const state =
-        nextState ??
-        getNextState(
+      let state = nextState;
+      if (!state) {
+        // Re-fetch players to get the latest is_alive status
+        // (critical for round_reveal → deciding next state)
+        let latestPlayers = players;
+        if (room.current_state === "round_reveal") {
+          const { data: freshPlayers } = await supabase
+            .from("room_players")
+            .select("*")
+            .eq("room_id", roomId)
+            .order("seat_number");
+          if (freshPlayers) {
+            latestPlayers = freshPlayers as RoomPlayer[];
+            setPlayers(latestPlayers);
+          }
+        }
+
+        state = getNextState(
           room.current_state,
           room.current_round,
           room.player_count_mode as 3 | 5,
-          allMafiosoCaught(players)
+          allMafiosoCaught(latestPlayers)
         );
+      }
 
       await advanceGameState(
         supabase,
@@ -306,7 +322,9 @@ export default function GameScreen() {
     case "round_reveal": {
       const roundVotes = votes.filter((v) => v.round_number === room.current_round);
       const jailedId = getJailedPlayerId(roundVotes);
+      // Find the jailed player — they may already have is_alive=false from vote processing
       const jailed = jailedId ? players.find((p) => p.id === jailedId) ?? null : null;
+      const jailedIsMafioso = jailed?.assigned_role === "mafioso";
 
       return (
         <JailReveal
@@ -314,6 +332,18 @@ export default function GameScreen() {
           wasTie={!jailed}
           isHost={isHost}
           onContinue={() => handleAdvance()}
+          extraMessage={
+            jailedIsMafioso && room.player_count_mode === 5
+              ? (() => {
+                  const remainingMafioso = players.filter(
+                    (p) => p.assigned_role === "mafioso" && p.is_alive && p.id !== jailedId
+                  );
+                  return remainingMafioso.length > 0
+                    ? "لسه في مافيوزو تاني!"
+                    : undefined;
+                })()
+              : undefined
+          }
         />
       );
     }

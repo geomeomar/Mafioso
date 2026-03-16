@@ -8,9 +8,10 @@ interface JailRevealProps {
   wasTie: boolean;
   isHost: boolean;
   onContinue: () => void;
+  extraMessage?: string;
 }
 
-export function JailReveal({ jailedPlayer, wasTie, isHost, onContinue }: JailRevealProps) {
+export function JailReveal({ jailedPlayer, wasTie, isHost, onContinue, extraMessage }: JailRevealProps) {
   if (wasTie) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen px-4">
@@ -56,6 +57,10 @@ export function JailReveal({ jailedPlayer, wasTie, isHost, onContinue }: JailRev
         >
           {wasMafioso ? "🔪 كان مافيوزو!" : "😇 كان بريء!"}
         </div>
+
+        {extraMessage && (
+          <p className="text-warning text-sm font-semibold mb-4">{extraMessage}</p>
+        )}
 
         <button
           onClick={onContinue}

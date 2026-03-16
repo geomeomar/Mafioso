@@ -125,7 +125,7 @@ export default function RoomLobby() {
   };
 
   const shareLink = typeof window !== "undefined"
-    ? `${window.location.origin}/room/${roomCode}`
+    ? `${window.location.origin}/room/${roomCode}/join`
     : "";
 
   const copyLink = () => {
