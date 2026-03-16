@@ -20,9 +20,12 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl">
       <body className={`${cairo.variable} font-[family-name:var(--font-cairo)] antialiased`}>
-        <main className="min-h-screen">
+        <main className="min-h-screen pb-10">
           {children}
         </main>
+        <footer className="fixed bottom-0 left-0 right-0 py-2 text-center">
+          <p className="text-xs text-muted-foreground/40">Developed By Omar Badr</p>
+        </footer>
       </body>
     </html>
   );

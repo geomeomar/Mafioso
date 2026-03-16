@@ -19,9 +19,6 @@ export default function Home() {
           ادخل أوضة
         </a>
       </div>
-      <p className="absolute bottom-6 text-xs text-muted-foreground/50">
-        Developed By Omar Badr
-      </p>
     </div>
   );
 }
