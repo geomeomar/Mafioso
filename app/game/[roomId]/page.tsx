@@ -39,7 +39,8 @@ export default function GameScreen() {
   const [hasAccused, setHasAccused] = useState(false);
   const [accusationWinner, setAccusationWinner] = useState<"innocent" | "mafioso" | null>(null);
 
-  const supabase = createClient();
+  // Stabilize supabase client reference to prevent subscription churn
+  const supabase = useMemo(() => createClient(), []);
   const processedVoteKeyRef = useRef<string>("");
 
   // Derive revote info from votes (syncs across all players)
@@ -108,6 +109,16 @@ export default function GameScreen() {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [roomId, supabase]);
+
+  // Poll votes every 3s as fallback for realtime misses
+  useEffect(() => {
+    if (!room || room.current_state !== "round_vote") return;
+    const interval = setInterval(() => {
+      supabase.from("room_votes").select("*").eq("room_id", roomId)
+        .then(({ data }) => { if (data) setVotes(data as RoomVote[]); });
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [room?.current_state, roomId, supabase]);
 
   // Vote processing
   useEffect(() => {
