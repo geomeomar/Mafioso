@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { advanceGameState } from "@/lib/supabase/rooms";
@@ -38,11 +38,27 @@ export default function GameScreen() {
   const [hasAccused, setHasAccused] = useState(false);
   const [accusationWinner, setAccusationWinner] = useState<"innocent" | "mafioso" | null>(null);
 
-  // Re-vote state
-  const [isRevote, setIsRevote] = useState(false);
-  const [tiedPlayerIds, setTiedPlayerIds] = useState<string[]>([]);
-
   const supabase = createClient();
+
+  // Derive revote info from votes data — syncs across all players automatically
+  const revoteInfo = useMemo(() => {
+    if (!room) return { isRevote: false, tiedPlayerIds: [] as string[] };
+    const firstVotes = votes.filter(
+      (v) => v.round_number === room.current_round && !v.is_revote
+    );
+    const revoteVotes = votes.filter(
+      (v) => v.round_number === room.current_round && v.is_revote
+    );
+    // It's a revote if we're in round_vote and first votes already exist
+    const isRevote = room.current_state === "round_vote" && firstVotes.length > 0;
+    // Tied IDs from first vote (restricts revote candidates)
+    const tiedPlayerIds = firstVotes.length > 0 && !getJailedPlayerId(firstVotes)
+      ? getTiedPlayerIds(firstVotes)
+      : [];
+    // For round_reveal: check if revote happened
+    const hasRevoteVotes = revoteVotes.length > 0;
+    return { isRevote, tiedPlayerIds, hasRevoteVotes };
+  }, [room, votes]);
 
   // Initial data load
   useEffect(() => {
@@ -145,8 +161,9 @@ export default function GameScreen() {
     if (room.current_state !== "round_vote") return;
 
     const alivePlayers = players.filter((p) => p.is_alive);
+    const { isRevote } = revoteInfo;
 
-    // Determine which votes to look at: revote or first vote
+    // Get the votes for current voting phase
     const roundVotes = votes.filter(
       (v) => v.round_number === room.current_round && v.is_revote === isRevote
     );
@@ -163,8 +180,6 @@ export default function GameScreen() {
 
     if (jailedId) {
       // Clear winner — jail the player and show reveal
-      setIsRevote(false);
-      setTiedPlayerIds([]);
       supabase
         .from("room_players")
         .update({ is_alive: false })
@@ -172,18 +187,11 @@ export default function GameScreen() {
         .then(() => {
           advanceGameState(supabase, roomId, "round_reveal");
         });
-    } else if (!isRevote) {
-      // First tie — go to round_reveal to show the tie, then we'll re-vote
-      const tied = getTiedPlayerIds(roundVotes);
-      setTiedPlayerIds(tied);
-      advanceGameState(supabase, roomId, "round_reveal");
     } else {
-      // Re-vote still tied — nobody jailed, continue
-      setIsRevote(false);
-      setTiedPlayerIds([]);
+      // Tie — go to round_reveal (handles both first tie and revote tie)
       advanceGameState(supabase, roomId, "round_reveal");
     }
-  }, [votes, room, players, currentPlayerId, roomId, supabase, isRevote]);
+  }, [votes, room, players, currentPlayerId, roomId, supabase, revoteInfo]);
 
   // handleAdvance: host advances from current state to next
   const handleAdvance = useCallback(
@@ -228,11 +236,12 @@ export default function GameScreen() {
     [room, currentPlayerId, players, supabase, roomId]
   );
 
-  // Handle re-vote: after a tie, go back to round_vote with tied candidates
+  // Handle re-vote: after a first tie, go back to round_vote
   const handleRevote = useCallback(async () => {
     if (!room || room.host_player_id !== currentPlayerId) return;
-    setIsRevote(true);
     setHasVoted(false);
+    // Just transition back to round_vote — revoteInfo will derive isRevote=true
+    // because first votes already exist for this round
     await advanceGameState(supabase, roomId, "round_vote");
   }, [room, currentPlayerId, supabase, roomId]);
 
@@ -244,7 +253,7 @@ export default function GameScreen() {
       round_number: room.current_round,
       voter_player_id: currentPlayerId,
       target_player_id: targetPlayerId,
-      is_revote: isRevote,
+      is_revote: revoteInfo.isRevote,
     });
   };
 
@@ -335,6 +344,7 @@ export default function GameScreen() {
       );
 
     case "round_vote": {
+      const { isRevote, tiedPlayerIds } = revoteInfo;
       const alivePlayers = players.filter((p) => p.is_alive);
       const roundVotes = votes.filter(
         (v) => v.round_number === room.current_round && v.is_revote === isRevote
@@ -375,9 +385,11 @@ export default function GameScreen() {
       const jailed = jailedId ? players.find((p) => p.id === jailedId) ?? null : null;
       const jailedIsMafioso = jailed?.assigned_role === "mafioso";
 
-      // Determine if this was a tie (first vote tie with no revote yet, or revote tie)
+      // Determine if this was a first-vote tie (no revote yet)
       const wasTie = !jailed;
-      const isFirstTie = wasTie && revoteVotes.length === 0 && tiedPlayerIds.length > 0;
+      const firstVoteTied = firstVotes.length > 0 && !getJailedPlayerId(firstVotes);
+      const isFirstTie = wasTie && firstVoteTied && revoteVotes.length === 0;
+      const tiedIds = isFirstTie ? getTiedPlayerIds(firstVotes) : [];
 
       return (
         <JailReveal
@@ -388,7 +400,7 @@ export default function GameScreen() {
           continueLabel={isFirstTie ? "إعادة تصويت" : undefined}
           extraMessage={
             isFirstTie
-              ? `تعادل بين ${tiedPlayerIds.length} لاعبين — هيتم إعادة التصويت بينهم بس`
+              ? `تعادل بين ${tiedIds.length} لاعبين — هيتم إعادة التصويت بينهم بس`
               : jailedIsMafioso && room.player_count_mode === 5
                 ? (() => {
                     const remainingMafioso = players.filter(
